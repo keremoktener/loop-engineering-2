@@ -72,6 +72,9 @@ class GitHub:
 
     # -- tasks (issues) -----------------------------------------------------
     def create_task(self, title: str, body: str, labels: list[str]) -> int:
+        for l in labels:
+            self._run(["label", "create", l, "--color", "ededed",
+                       "--force", *self._repo_args()])
         args = ["issue", "create", "--title", title, "--body", body, *self._repo_args()]
         for l in labels:
             args += ["--label", l]
