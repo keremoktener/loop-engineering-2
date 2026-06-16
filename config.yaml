@@ -17,7 +17,7 @@ engines:
 
   codex:
     cli: "codex"
-    model: "gpt-5-codex"          # whatever your codex install accepts (-m/--model)
+    model: "gpt-5.5"          # whatever your codex install accepts (-m/--model)
     # codex exec = non-interactive headless run. {prompt} is piped via stdin.
     # Adjust flags to match your codex version (run `codex exec --help`).
     exec_template:
@@ -31,11 +31,11 @@ engines:
       - "workspace-write"        # read-only | workspace-write | danger-full-access
       - "--skip-git-repo-check"
     prompt_via_stdin: true
-    timeout_seconds: 1800
+    timeout_seconds: 1800›
 
   claude_code:
     cli: "claude"
-    model: "opus"                # the CTO seat — give it the strong model
+    model: "claude-opus-4-8"                # the CTO seat — give it the strong model
     # Claude Code headless (print mode). Runs in {workdir} via the process cwd.
     # Adjust flags to match your version (run `claude --help`).
     exec_template:
