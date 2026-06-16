@@ -1,0 +1,163 @@
+# ──────────────────────────────────────────────────────────────────────────
+# Loop Engineering — configuration
+# Edit this file; nothing else needs hardcoded values.
+# ──────────────────────────────────────────────────────────────────────────
+
+# Where the work happens.
+repo:
+  # GitHub "owner/name". Leave empty to auto-detect from the local git remote.
+  slug: ""
+  # Local path to the codebase the agents operate on.
+  workdir: "."
+
+# Execution engines. Each agent runs its turns through one of these.
+# Add/rename freely; `default` is used by any agent that doesn't name an engine.
+engines:
+  default: codex
+
+  codex:
+    cli: "codex"
+    model: "gpt-5-codex"          # whatever your codex install accepts (-m/--model)
+    # codex exec = non-interactive headless run. {prompt} is piped via stdin.
+    # Adjust flags to match your codex version (run `codex exec --help`).
+    exec_template:
+      - "codex"
+      - "exec"
+      - "--model"
+      - "{model}"
+      - "--cd"
+      - "{workdir}"
+      - "--sandbox"
+      - "workspace-write"        # read-only | workspace-write | danger-full-access
+      - "--skip-git-repo-check"
+    prompt_via_stdin: true
+    timeout_seconds: 1800
+
+  claude_code:
+    cli: "claude"
+    model: "opus"                # the CTO seat — give it the strong model
+    # Claude Code headless (print mode). Runs in {workdir} via the process cwd.
+    # Adjust flags to match your version (run `claude --help`).
+    exec_template:
+      - "claude"
+      - "-p"
+      - "--model"
+      - "{model}"
+      - "--output-format"
+      - "text"
+      - "--permission-mode"
+      - "acceptEdits"            # let it apply edits unattended; sandbox externally
+    prompt_via_stdin: true
+    timeout_seconds: 1800
+
+# GitHub coordination — the "email inboxes" the agents check.
+github:
+  cli: "gh"
+  # The design debate lives in a Discussion (falls back to a pinned issue if
+  # Discussions aren't enabled on the repo).
+  use_discussions: true
+  discussion_category: "Ideas"
+  # Labels the orchestrator manages.
+  labels:
+    task: "loop:task"
+    discussion: "loop:discussion"
+    status_todo: "status:todo"
+    status_doing: "status:in-progress"
+    status_review: "status:review"
+    status_blocked: "status:blocked"
+    status_done: "status:done"
+
+# The swarm. Each agent has a persona prompt under prompts/<key>.md.
+# `owns`   = task domains routed to this agent (matched against task labels/tags).
+# `engine` = which engine above runs this agent's turns (defaults to engines.default).
+agents:
+  architect:
+    name: "Architect"
+    prompt: "architect"
+    engine: codex               # Codex drafts the spec + the task breakdown
+    owns: ["design", "architecture", "decision"]
+    is_lead: true               # breaks ties when planning
+
+  cto:
+    name: "CTO"
+    prompt: "cto"
+    engine: claude_code         # Claude Code is the senior technical authority
+    owns: ["review", "qa", "test", "approval"]
+    is_authority: true          # ratifies the plan, reviews produced work
+
+  backend-engineer:
+    name: "Backend Engineer"
+    prompt: "backend-engineer"
+    engine: codex
+    owns: ["backend", "api", "db", "auth"]
+  frontend-engineer:
+    name: "Frontend Engineer"
+    prompt: "frontend-engineer"
+    engine: codex
+    owns: ["frontend", "ui", "web", "component"]
+  mcp-engineer:
+    name: "MCP Engineer"
+    prompt: "mcp-engineer"
+    engine: codex
+    owns: ["mcp", "tools", "integration", "connector"]
+  infra-engineer:
+    name: "Infra / Compute Engineer"
+    prompt: "infra-engineer"
+    engine: codex
+    owns: ["infra", "deploy", "ci", "compute", "queue", "worker"]
+
+# Evolving memory — a folder of markdown notes the loop reads/writes and that
+# you can open as an Obsidian vault. Makes the swarm improve across runs/projects.
+memory:
+  enabled: true
+  # Where the vault lives:
+  #   scope: shared   → ~/.loop/vault   (one brain across all your projects)
+  #   scope: per_repo → <repo>/.loop/vault (versioned with the code)
+  # Or set `vault:` to an explicit path (e.g. an existing Obsidian vault folder).
+  scope: shared
+  vault: ""                 # explicit path overrides scope
+  namespace: ""             # defaults to repo name; "global" notes always included
+  top_k: 5                  # max notes injected per turn (keep small — tokens!)
+  max_note_chars: 280       # truncate each injected note
+  reinforce_on_verify: true # passed → boost, failed → flag, at the verify gate
+  prune_failed: true        # delete failed notes that never recovered
+  distill_min_notes: 12     # consolidate a namespace into lessons.md past this
+  # Recall is keyword + stem + dev-domain synonyms by default (no cost). Extend
+  # the synonym clusters for your own vocabulary if you like:
+  extra_synonyms: {}        # e.g. {answerscan: [aeo, geo, visibility, audit]}
+  # Optional semantic recall — OFF by default. Turn on only when the vault is
+  # large; uses OPENAI_API_KEY and embeds each note once (cached by content hash).
+  embeddings:
+    enabled: false
+    provider: openai        # openai | none
+    model: text-embedding-3-small
+
+# Planning (Phase 2).
+plan:
+  # After the Codex architect drafts the plan, have the Claude Code CTO ratify
+  # it (one turn) before any issues are created — the "CTO in the discussion".
+  cto_review: true
+
+# Loop behaviour.
+loop:
+  max_iterations: 60            # hard stop on the autonomous middle loop
+  max_consecutive_blocks: 4     # bail if the swarm stalls
+  poll_recent_messages: 8       # how many recent comments an agent "reads"
+  # Run each autonomous loop on its own throwaway branch. The swarm's edits land
+  # there; you review the diff at the verify gate and merge by hand.
+  branch_per_run: true
+  branch_prefix: "loop/"
+  # Human-in-the-loop gates. The loop pauses and waits for `loopengine verify`.
+  human_gates:
+    before_plan_approval: true  # you sign off the design before execution
+    after_each_phase: false     # set true to verify phase-by-phase
+    before_merge: true          # you verify before anything is marked done
+
+# Verification (Phase 4 — you're back in the loop).
+verify:
+  commands:
+    - "npm run lint"
+    - "npm run typecheck"
+    - "npm test"
+    - "npm run build"
+  fail_fast: false
