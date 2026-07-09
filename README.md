@@ -2,11 +2,11 @@
 
 > *You're in the loop at the start (spec) and the end (verify). The agents are in the loop in the middle.*
 
-A small, runnable implementation of **loop engineering** — the workflow from the
-@paddyborajam clip: instead of *prompting* a coding agent step by step, you
-**define the outcome, let a swarm of specialist agents loop autonomously to
-build it, then verify**. Driven by the **Codex CLI**, coordinated through
-**GitHub issues + discussions** (the agents' "email inboxes").
+**MIT-licensed CLI kit for coordinating AI coding agents through GitHub issues, discussions, branch isolation, memory, and verification gates.**
+
+A small, runnable implementation of **loop engineering**: define the outcome, let a swarm of specialist agents work through the middle, then verify before anything is merged. The goal is to help developers and open-source maintainers experiment with autonomous coding workflows without losing structure, reviewability, or human control.
+
+Driven by the **Codex CLI**, coordinated through **GitHub issues + discussions** as the agents' inboxes, and designed so the human remains responsible for the spec, verification, and final merge decision.
 
 ## The idea, mapped to this kit
 
@@ -225,5 +225,6 @@ scripts/               setup.sh, loop.sh
 ```
 
 ---
+
 Built as a faithful, minimal take on loop engineering. It's a starting frame, not
 a framework — read the ~700 lines, then bend it to your stack.
