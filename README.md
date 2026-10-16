@@ -121,10 +121,13 @@ yet.
 otherwise the `before_merge` gate would freeze every downstream task mid-run. The
 human gate still holds at the end; it just doesn't stall the autonomous middle.
 
-If a dependency graph has a cycle (or every remaining task is dep-blocked), the
-loop **does not deadlock**: it logs a warning and falls back to phase/issue order
-so forward progress continues. Net effect: strictly better ordering than a plain
-queue, with no new way to get stuck.
+If no task is dependency-ready, the loop selects the earliest phase/issue among
+actionable cycle members and reports `cycle:<sorted SCC members>`, including
+non-actionable members. Without an actionable cycle member, it selects the
+earliest actionable phase/issue and reports `blocked:<sorted unmet dependencies>`.
+Self-dependencies count as cycles; produced or closed dependencies add no edges.
+Each distinct diagnostic is warned once per run. SCC detection is iterative and
+linear in graph size, so deep dependency chains and cycles need no recursion.
 
 ## Branch-per-run isolation
 
@@ -135,8 +138,8 @@ prints the exact merge command — you review the diff and merge by hand (honour
 `before_merge`). Re-running on an existing run branch just switches to it, so an
 interrupted run resumes in place rather than forking again.
 
-This pairs with the scheduler by design: a clean throwaway branch is exactly where
-you *want* the scheduler's cycle-fallback to be allowed to be imperfect.
+Branch isolation keeps edits reviewable while the scheduler distinguishes cycle
+members from blocked dependencies and reports the precise stall reason.
 
 ## Memory — a vault that learns across runs
 

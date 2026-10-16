@@ -131,9 +131,9 @@ class Orchestrator:
 
         Returns (task, note). Among tasks whose deps are all produced, prefer
         in-progress over todo, then earlier phase, then lower issue number. If
-        actionable tasks remain but none are dependency-ready (a cycle, or all
-        deps themselves blocked), fall back to phase/issue order so the loop can
-        never deadlock — and flag it."""
+        actionable tasks remain but none are dependency-ready, prefer a cyclic
+        actionable task by phase/issue and report its SCC. Otherwise fall back
+        to phase/issue order and report the selected task's unmet deps."""
         actionable = [t for t in tasks if t.status in ACTIONABLE_STATUSES]
         if not actionable:
             return None, ""
@@ -143,9 +143,56 @@ class Orchestrator:
         if ready:
             ready.sort(key=lambda t: (status_rank[t.status], t.phase, t.number))
             return ready[0], ""
-        # nothing dependency-ready but work remains → cycle or all-deps-blocked
-        actionable.sort(key=lambda t: (t.phase, t.number))
-        return actionable[0], "cycle-or-block"
+        # Only unresolved dependencies on open tasks form graph edges.
+        open_numbers = {t.number for t in tasks}
+        graph = {t.number: [d for d in t.depends_on
+                            if d in open_numbers and d not in produced]
+                 for t in tasks}
+        reverse = {number: [] for number in graph}
+        for number, deps in graph.items():
+            for dep in deps:
+                reverse[dep].append(number)
+
+        # Iterative Kosaraju: finish order, then SCCs in the reversed graph.
+        seen, order = set(), []
+        for number in graph:
+            if number in seen:
+                continue
+            seen.add(number)
+            stack = [(number, iter(graph[number]))]
+            while stack:
+                current, deps = stack[-1]
+                for dep in deps:
+                    if dep not in seen:
+                        seen.add(dep)
+                        stack.append((dep, iter(graph[dep])))
+                        break
+                else:
+                    order.append(current)
+                    stack.pop()
+
+        components: dict[int, list[int]] = {}
+        for number in reversed(order):
+            if number in components:
+                continue
+            component: list[int] = []
+            pending = [number]
+            components[number] = component
+            while pending:
+                current = pending.pop()
+                component.append(current)
+                for dep in reverse[current]:
+                    if dep not in components:
+                        components[dep] = component
+                        pending.append(dep)
+
+        cyclic = [t for t in actionable
+                  if len(components[t.number]) > 1 or t.number in graph[t.number]]
+        if cyclic:
+            task = min(cyclic, key=lambda t: (t.phase, t.number))
+            return task, "cycle:" + ",".join(map(str, sorted(components[task.number])))
+        task = min(actionable, key=lambda t: (t.phase, t.number))
+        return task, "blocked:" + ",".join(map(str, sorted(task.depends_on - produced)))
 
     def _setup_branch(self, spec: str) -> str:
         """Create an isolated branch for this run if configured. Returns name/''."""
@@ -180,7 +227,8 @@ class Orchestrator:
         run_branch = self._setup_branch(spec)
         self._record_run(run_branch, base_branch)
 
-        iterations, consecutive_blocks, cycle_warned = 0, 0, False
+        iterations, consecutive_blocks = 0, 0
+        warned_notes: set[str] = set()
         summary = {"turns": 0, "completed": [], "blocked": [],
                    "branch": run_branch, "base_branch": base_branch,
                    "stopped_reason": ""}
@@ -201,10 +249,10 @@ class Orchestrator:
             if task is None:
                 summary["stopped_reason"] = "all tasks resolved"
                 break
-            if note == "cycle-or-block" and not cycle_warned:
-                self.log("   ⚠️ no dependency-ready task (cycle or all deps blocked) "
-                         "— falling back to phase/issue order")
-                cycle_warned = True
+            if note.startswith(("cycle:", "blocked:")) and note not in warned_notes:
+                self.log(f"   ⚠️ no dependency-ready task ({note}) "
+                         "— selecting by phase/issue within cycle members or blocked tasks")
+                warned_notes.add(note)
 
             agent_key = self.cfg.agent_for_tags(task.tags)
             agent_cfg = self.cfg.agents.get(agent_key, {})
